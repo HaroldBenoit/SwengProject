@@ -12,11 +12,13 @@ import org.hamcrest.Matchers;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.RuleChain;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mockito;
 
 import java.io.IOException;
-import java.security.Permission;
 import java.util.Random;
+import java.util.function.Consumer;
 
 import ch.epfl.sweng.project.geocoding.Address;
 import ch.epfl.sweng.project.geocoding.GeocodingModule;
@@ -37,7 +39,6 @@ import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.action.ViewActions.clearText;
 import static androidx.test.espresso.action.ViewActions.click;
 import static androidx.test.espresso.action.ViewActions.closeSoftKeyboard;
-import static androidx.test.espresso.action.ViewActions.swipeLeft;
 import static androidx.test.espresso.action.ViewActions.typeText;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
 import static androidx.test.espresso.matcher.ViewMatchers.withText;
@@ -45,15 +46,19 @@ import static androidx.test.espresso.matcher.ViewMatchers.withText;
 @HiltAndroidTest
 @UninstallModules({WeatherModule.class, LocationModule.class, GeocodingModule.class})
 public class WeatherActivityTest {
-    private HiltAndroidRule hiltRule = new HiltAndroidRule(this);
-
+    private static final Random RANDOM = new Random();
+    private static final String CITY = "Lausanne";
+    private static final Location TEST_LOCATION = new Location((RANDOM.nextDouble() - 0.5) * 90, (RANDOM.nextDouble() - 0.5) * 90);
+    private static final WeatherReport TEST_REPORT_1 = new WeatherReport(10, 5, 15, "clear", "clear");
+    private static final WeatherReport TEST_REPORT_2 = new WeatherReport(20, 15, 25, "cloudy", "cloudy");
+    private static final WeatherReport TEST_REPORT_3 = new WeatherReport(30, 25, 35, "rain", "rain");
+    private static final WeatherForecast TEST_FORECAST = new WeatherForecast(new WeatherReport[]{TEST_REPORT_1, TEST_REPORT_2, TEST_REPORT_3});
+    private static final Address TEST_ADDRESS = new Address(Lists.newArrayList("Avenue Piccard 1", CITY, "Switzerland"));
     @Rule
-    public RuleChain testRule = RuleChain.outerRule(hiltRule)
+    public RuleChain testRule = RuleChain.outerRule(new HiltAndroidRule(this))
             .around(new ActivityScenarioRule<>(WeatherActivity.class));
-
     @Rule
     public GrantPermissionRule grantPermissionRule = GrantPermissionRule.grant(Manifest.permission.ACCESS_COARSE_LOCATION);
-
     @BindValue
     public WeatherService weatherService = Mockito.mock(WeatherService.class);
     @BindValue
@@ -61,20 +66,13 @@ public class WeatherActivityTest {
     @BindValue
     public GeocodingService geocodingService = Mockito.mock(GeocodingService.class);
 
-    private static final Random RANDOM = new Random();
-    private static final String CITY = "Lausanne";
-    private static final Location TEST_LOCATION = new Location((RANDOM.nextDouble() - 0.5) * 90, (RANDOM.nextDouble() - 0.5) * 90);
-    private static final WeatherReport TEST_REPORT_1 = new WeatherReport(10, 5, 15, "clear", "clear");
-    private static final WeatherReport TEST_REPORT_2 = new WeatherReport(20, 15, 25, "cloudy", "cloudy");
-    private static final WeatherReport TEST_REPORT_3 = new WeatherReport(30, 25, 35, "rain", "rain");
-
-    private static final WeatherForecast TEST_FORECAST = new WeatherForecast(new WeatherReport[]{TEST_REPORT_1, TEST_REPORT_2, TEST_REPORT_3});
-    private static final Address TEST_ADDRESS = new Address(Lists.newArrayList("Avenue Piccard 1", CITY, "Switzerland"));
-
     @Test
     public void clickingOnMyPositionGetsCurrentPositionAndDisplaysWeather() throws IOException {
         // Initialize the mocked behaviour of the services
-        Mockito.when(locationService.getCurrentLocation()).thenReturn(TEST_LOCATION);
+        ArgumentCaptor<Consumer> callbackCaptor = ArgumentCaptor.forClass(Consumer.class);
+        Mockito.verify(locationService).subscribeToLocationUpdates(callbackCaptor.capture(), Mockito.anyLong(), Mockito.anyLong());
+        callbackCaptor.getValue().accept(TEST_LOCATION);
+
         Mockito.when(weatherService.getForecast(TEST_LOCATION)).thenReturn(TEST_FORECAST);
 
         // Perform UI interactions
@@ -85,7 +83,6 @@ public class WeatherActivityTest {
         checkWeatherIsProperlyDisplayed();
 
         // Ensure methods were called with the correct arguments
-        Mockito.verify(locationService).getCurrentLocation();
         Mockito.verify(weatherService).getForecast(TEST_LOCATION);
     }
 
